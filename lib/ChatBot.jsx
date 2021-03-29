@@ -1,6 +1,7 @@
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import Random from 'random-id';
+import axios from 'axios';
 import { CustomStep, OptionsStep, TextStep } from './steps_components';
 import schema from './schemas/schema';
 import * as storage from './storage';
@@ -51,14 +52,18 @@ class ChatBot extends Component {
       inputInvalid: false,
       speaking: false,
       recognitionEnable: props.recognitionEnable && Recognition.isSupported(),
-      defaultUserSettings: {}
+      defaultUserSettings: {},
+      chatbotId: null,
+      intentName: null,
+      chatbotName: null,
+      userId: null,
     };
 
     this.speak = speakFn(props.speechSynthesis);
   }
 
   componentDidMount() {
-    const { steps } = this.props;
+    const { steps, token } = this.props;
     const {
       botDelay,
       botAvatar,
@@ -72,6 +77,24 @@ class ChatBot extends Component {
     } = this.props;
     const chatSteps = {};
 
+    if (!token) {
+      return console.error('[@kcscope/chatbot-plugin] Please provide token');
+    }
+
+    axios.get(`https://fyp-ai-chatbot-server-7r4gm.ondigitalocean.app/api/chatbots/verify?token=${token}`)
+      .then(res => {
+        if (res.status === 201) {
+          if (res.data.chatbotId) {
+            this.setState({ chatbotId: res.data.chatbotId });
+          } else {
+            console.error('[@kcscope/chatbot-plugin] Token Incorrect!');
+          }
+        }
+      })
+      .catch(error => {
+        console.error(error);
+      })
+
     const defaultBotSettings = { delay: botDelay, avatar: botAvatar, botName };
     const defaultUserSettings = {
       delay: userDelay,
@@ -81,30 +104,36 @@ class ChatBot extends Component {
     };
     const defaultCustomSettings = { delay: customDelay };
 
-    for (let i = 0, len = steps.length; i < len; i += 1) {
-      const step = steps[i];
-      let settings = {};
+    // for (let i = 0, len = steps.length; i < len; i += 1) {
+    //   const step = steps[i];
+    //   let settings = {};
 
-      if (step.user) {
-        settings = defaultUserSettings;
-      } else if (step.message || step.asMessage) {
-        settings = defaultBotSettings;
-      } else if (step.component) {
-        settings = defaultCustomSettings;
-      }
+    //   if (step.user) {
+    //     settings = defaultUserSettings;
+    //   } else if (step.message || step.asMessage) {
+    //     settings = defaultBotSettings;
+    //   } else if (step.component) {
+    //     settings = defaultCustomSettings;
+    //   }
 
-      chatSteps[step.id] = Object.assign({}, settings, schema.parse(step));
-    }
+    //   chatSteps[step.id] = Object.assign({}, settings, schema.parse(step));
+    // }
 
-    schema.checkInvalidIds(chatSteps);
+    // schema.checkInvalidIds(chatSteps);
 
-    const firstStep = steps[0];
+    // const firstStep = steps[0];
+    const firstStep = {
+      ...defaultBotSettings,
+      id: '1',
+      message: 'What can I help you with?'
+    };
+    chatSteps[firstStep.id] = Object.assign({}, firstStep);
 
-    if (firstStep.message) {
-      const { message } = firstStep;
-      firstStep.message = typeof message === 'function' ? message() : message;
-      chatSteps[firstStep.id].message = firstStep.message;
-    }
+    // if (firstStep.message) {
+    //   const { message } = firstStep;
+    //   firstStep.message = typeof message === 'function' ? message() : message;
+    //   chatSteps[firstStep.id].message = firstStep.message;
+    // }
 
     const { recognitionEnable } = this.state;
     const { recognitionLang } = this.props;
@@ -133,20 +162,23 @@ class ChatBot extends Component {
         steps: chatSteps
       },
       () => {
-        // focus input if last step cached is a user step
-        this.setState({ disabled: false }, () => {
-          if (enableMobileAutoFocus || !isMobile()) {
-            if (this.input) {
-              this.input.focus();
-            }
-          }
-        });
+        // // focus input if last step cached is a user step
+        // this.setState({ disabled: false }, () => {
+        //   if (enableMobileAutoFocus || !isMobile()) {
+        //     if (this.input) {
+        //       this.input.focus();
+        //     }
+        //   }
+        // });
       }
     );
+
+    // console.log('currentStep, defaultUserSettings, previousStep, previousSteps, renderedSteps, steps', currentStep, defaultUserSettings, previousStep, previousSteps, renderedSteps, steps)
 
     this.setState({
       currentStep,
       defaultUserSettings,
+      defaultBotSettings,
       previousStep,
       previousSteps,
       renderedSteps,
@@ -239,9 +271,16 @@ class ChatBot extends Component {
     return steps;
   };
 
-  triggerNextStep = data => {
+  triggerNextStep = async data => {
     const { enableMobileAutoFocus } = this.props;
-    const { defaultUserSettings, previousSteps, renderedSteps, steps } = this.state;
+    const {
+      defaultBotSettings,
+      defaultUserSettings,
+      previousSteps,
+      renderedSteps,
+      inputValue,
+      steps
+    } = this.state;
 
     let { currentStep, previousStep } = this.state;
     const isEnd = currentStep.end;
@@ -259,18 +298,19 @@ class ChatBot extends Component {
       currentStep.trigger = this.getTriggeredStep(data.trigger, data.value);
     }
 
+    // console.log('currentStep', currentStep, currentStep.options && data)
+
     if (isEnd) {
       this.handleEnd();
     } else if (currentStep.options && data) {
       const option = currentStep.options.filter(o => o.value === data.value)[0];
-      const trigger = this.getTriggeredStep(option.trigger, currentStep.value);
+      // const trigger = this.getTriggeredStep(option.trigger, currentStep.value);
       delete currentStep.options;
 
       // replace choose option for user message
       currentStep = Object.assign({}, currentStep, option, defaultUserSettings, {
         user: true,
-        message: option.label,
-        trigger
+        message: option.label
       });
 
       renderedSteps.pop();
@@ -283,13 +323,23 @@ class ChatBot extends Component {
         renderedSteps,
         previousSteps
       });
-    } else if (currentStep.trigger) {
+    } else if (currentStep.next) {
       if (currentStep.replace) {
         renderedSteps.pop();
       }
 
       const trigger = this.getTriggeredStep(currentStep.trigger, currentStep.value);
       let nextStep = Object.assign({}, steps[trigger]);
+
+      // console.log('nextStep', nextStep);
+
+      if (!Object.keys(nextStep).length) {
+        nextStep = {
+          id: trigger,
+          user: true,
+          trigger: currentStep.id + 1
+        }
+      }
 
       if (nextStep.message) {
         nextStep.message = this.getStepMessage(nextStep.message);
@@ -310,6 +360,8 @@ class ChatBot extends Component {
 
       previousStep = currentStep;
       currentStep = nextStep;
+
+      // console.log('currentStep', currentStep)
 
       this.setState({ renderedSteps, currentStep, previousStep }, () => {
         if (nextStep.user) {
@@ -443,29 +495,50 @@ class ChatBot extends Component {
   };
 
   submitUserMessage = () => {
-    const { defaultUserSettings, inputValue, previousSteps, renderedSteps } = this.state;
+    const {
+      defaultUserSettings,
+      defaultBotSettings,
+      inputValue,
+      previousSteps,
+      renderedSteps,
+      steps,
+      intentName,
+      chatbotName,
+      chatbotId,
+      userId,
+    } = this.state;
     let { currentStep } = this.state;
 
-    const isInvalid = currentStep.validator && this.checkInvalidInput();
+    if (!inputValue) {
+      return;
+    }
+
+    const previousStep = previousSteps.slice(-1)[0];
+
+    const isInvalid = false; //currentStep.validator && this.checkInvalidInput();
 
     if (!isInvalid) {
       const step = {
+        ...defaultUserSettings,
         message: inputValue,
-        value: inputValue
+        value: inputValue,
+        user: true,
+        param: previousStep.trigger,
       };
 
-      currentStep = Object.assign({}, defaultUserSettings, currentStep, step);
+      currentStep = Object.assign({}, step);
 
       renderedSteps.push(currentStep);
       previousSteps.push(currentStep);
+
+      // console.log('currentStep, renderedSteps, previousSteps, inputValue', currentStep, renderedSteps, previousSteps, inputValue)
 
       this.setState(
         {
           currentStep,
           renderedSteps,
           previousSteps,
-          disabled: true,
-          inputValue: ''
+          disabled: true
         },
         () => {
           if (this.input) {
@@ -473,6 +546,205 @@ class ChatBot extends Component {
           }
         }
       );
+
+      if (previousStep.event) {
+        const id = previousStep?.id + 1;
+
+        if (steps[id]) {
+          currentStep = Object.assign({}, steps[id]);
+        } else {
+          currentStep = Object.assign({}, {
+            id: '99',
+            next: true,
+            message: 'Great! Thanks for your comment.',
+            trigger: 'review',
+            ...defaultBotSettings,
+          });
+
+          // window.setTimeout(() => {
+          //   this._triggerCustomComponent();
+          // }, 1000)
+          // console.log('currentStep', currentStep);
+          // console.log('previousStep', previousStep);
+          const details = {};
+
+          if (previousStep.isContactForm) {
+            steps['review'] = {
+              id: 'review',
+              next: true,
+              asMessage: true,
+              trigger: 'contact',
+              component: (
+                <div style={{ width: '100%' }}>
+                  <h3>Check out your summary</h3>
+                  <table>
+                    <tbody>
+                      {
+                        previousSteps.map(s => {
+                          if (s.param) {
+                            details[s.param] = s.value;
+                            return (
+                              <tr key={s.param}>
+                                <td>{s.param}</td>
+                                <td>{s.value}</td>
+                              </tr>
+                            )
+                          }
+                        })
+                      }
+                    </tbody>
+                  </table>
+                </div>
+              ),
+              ...defaultBotSettings,
+            }
+  
+            steps['contact'] = {
+              id: 'contact',
+              message: 'Thanks for your message, we will get back you soon.',
+              ...defaultBotSettings,
+            }
+
+            // console.log('details', details, intentName, chatbotName);
+            const data = {
+              userId,
+              details,
+              intentName,
+              chatbotName,
+            }
+
+            axios.post('https://fyp-ai-chatbot-server-7r4gm.ondigitalocean.app/api/analytics/contactUsage', data)
+              .then(function (response) {
+                console.log(response);
+              })
+              .catch(function (error) {
+                console.log(error);
+              });
+            
+          }
+        }
+
+        renderedSteps.push(currentStep);
+        previousSteps.push(currentStep);
+        this.setState({
+          steps,
+          currentStep,
+          renderedSteps,
+          previousSteps,
+          inputValue: this.input.value = null,
+        });
+        
+      } else if (inputValue.length > 0) {
+        
+        axios.get(`https://fyp-ai-chatbot-server-7r4gm.ondigitalocean.app/api/chatbots/response?chatbotId=${chatbotId}&input=${inputValue}`)
+          .then(res => {
+            if (res.status === 201) {
+              let message;
+              let options;
+              let component;
+              let steps = {};
+
+              switch (res.data.responseType) {
+                case 'multiple':
+                  options = res.data.response.map(r => ({
+                    value: r,
+                    label: r
+                  }));
+                  break;
+                case 'card':
+                  component = (
+                    <div style={{ width: '60%' }}>
+                      <img style={{ width: '100%' }} alt={res.data.response.title} src={res.data.response.imageUrl} />
+                      <h2>{res.data.response.title}</h2>
+                      <h3>{res.data.response.description}</h3>
+                    </div>
+                  );
+                  break;
+                case 'url':
+                  component = (
+                    <a target='_blank' href={res.data.response.url}>{res.data.response.text}</a>
+                  );
+                  break;
+                case 'event':
+                  res.data.response.forEach((r, i) => {
+                    steps[i] = {
+                      id: i,
+                      message: r.text,
+                      trigger: r.param,
+                      event: true,
+                      isContactForm: res.data.isContactForm,
+                      ...defaultBotSettings,
+                    }
+                  })
+                  break;
+                case 'plainText':
+                  message = res.data.response;
+                  break;
+
+                default:
+                  message = res.data.response;
+                  break;
+              }
+
+              const nextStep = {
+                ...defaultBotSettings,
+                id: '1'
+              };
+
+              message ? (nextStep.message = message) : undefined;
+              options ? (nextStep.options = options) : undefined;
+              component ? (nextStep.component = component) : undefined;
+
+              currentStep = Object.assign({}, nextStep);
+              
+              if (Object.keys(steps).length) {
+                currentStep = Object.assign({}, steps[0]);
+                this.setState({ steps })
+              }
+
+              renderedSteps.push(currentStep);
+              previousSteps.push(currentStep);
+              this.setState({
+                currentStep,
+                renderedSteps,
+                previousSteps,
+                inputValue: this.input.value = null,
+                intentName: res.data.intentName,
+                chatbotName: res.data.chatbotName,
+                userId: res.data.userId,
+              });
+            } else {
+              const step = {
+                ...defaultBotSettings,
+                message: 'Sorry, I am not understand, please contact our sales.'
+              };
+        
+              currentStep = Object.assign({}, step);
+        
+              renderedSteps.push(currentStep);
+              previousSteps.push(currentStep);
+        
+              // console.log('currentStep, renderedSteps, previousSteps, inputValue', currentStep, renderedSteps, previousSteps, inputValue)
+        
+              this.setState(
+                {
+                  currentStep,
+                  renderedSteps,
+                  previousSteps,
+                  disabled: true
+                },
+                () => {
+                  if (this.input) {
+                    this.input.blur();
+                  }
+                }
+              );
+            }
+          })
+          .catch(function (error) {
+            console.log(error);
+          });
+      }
     }
   };
 
@@ -587,6 +859,53 @@ class ChatBot extends Component {
     );
   };
 
+  // Private function
+  _triggerCustomComponent = () => {
+    const { 
+      defaultBotSettings,
+      previousSteps,
+      renderedSteps,
+    } = this.state;
+
+    const currentStep = {
+      id: 'review',
+      asMessage: true,
+      component: (
+        <div style={{ width: '100%' }}>
+          <h3>Contact Us</h3>
+          <h4>Summary</h4>
+          <table>
+            <tbody>
+              {
+                previousSteps.map(s => {
+                  if (s.param) {
+                    return (
+                      <tr>
+                        <td>{s.param}</td>
+                        <td>{s.value}</td>
+                      </tr>
+                    )
+                  }
+                })
+              }
+            </tbody>
+          </table>
+        </div>
+      ),
+      ...defaultBotSettings,
+    }
+
+    renderedSteps.push(currentStep);
+    previousSteps.push(currentStep);
+
+    this.setState({
+      currentStep,
+      renderedSteps,
+      previousSteps,
+    });
+    
+  }
+
   render() {
     const {
       currentStep,
@@ -618,8 +937,13 @@ class ChatBot extends Component {
       style,
       submitButtonStyle,
       width,
-      height
+      height,
+      token
     } = this.props;
+
+    if (!token) {
+      return <div />;
+    }
 
     const header = headerComponent || (
       <Header className="rsc-header">
@@ -695,7 +1019,7 @@ class ChatBot extends Component {
                 value={inputValue}
                 floating={floating}
                 invalid={inputInvalid}
-                disabled={disabled}
+                // disabled={disabled}
                 hasButton={!hideSubmitButton}
                 {...inputAttributesOverride}
               />
@@ -708,7 +1032,7 @@ class ChatBot extends Component {
                   style={submitButtonStyle}
                   onClick={this.handleSubmitButton}
                   invalid={inputInvalid}
-                  disabled={disabled}
+                  // disabled={disabled}
                   speaking={speaking}
                 >
                   {icon}
@@ -791,13 +1115,13 @@ ChatBot.defaultProps = {
   enableMobileAutoFocus: false,
   enableSmoothScroll: false,
   extraControl: undefined,
-  floating: false,
+  floating: true,
   floatingIcon: <ChatIcon />,
   floatingStyle: {},
   footerStyle: {},
   handleEnd: undefined,
   headerComponent: undefined,
-  headerTitle: 'Chat',
+  headerTitle: 'Scope AI Chatbot',
   height: '520px',
   hideBotAvatar: false,
   hideHeader: false,
@@ -818,7 +1142,7 @@ ChatBot.defaultProps = {
   style: {},
   submitButtonStyle: {},
   toggleFloating: undefined,
-  userDelay: 1000,
+  userDelay: 0,
   width: '350px',
   botAvatar:
     "data:image/svg+xml,%3csvg version='1' xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3e%3cpath d='M303 70a47 47 0 1 0-70 40v84h46v-84c14-8 24-23 24-40z' fill='%2393c7ef'/%3e%3cpath d='M256 23v171h23v-84a47 47 0 0 0-23-87z' fill='%235a8bb0'/%3e%3cpath fill='%2393c7ef' d='M0 240h248v124H0z'/%3e%3cpath fill='%235a8bb0' d='M264 240h248v124H264z'/%3e%3cpath fill='%2393c7ef' d='M186 365h140v124H186z'/%3e%3cpath fill='%235a8bb0' d='M256 365h70v124h-70z'/%3e%3cpath fill='%23cce9f9' d='M47 163h419v279H47z'/%3e%3cpath fill='%2393c7ef' d='M256 163h209v279H256z'/%3e%3cpath d='M194 272a31 31 0 0 1-62 0c0-18 14-32 31-32s31 14 31 32z' fill='%233c5d76'/%3e%3cpath d='M380 272a31 31 0 0 1-62 0c0-18 14-32 31-32s31 14 31 32z' fill='%231e2e3b'/%3e%3cpath d='M186 349a70 70 0 1 0 140 0H186z' fill='%233c5d76'/%3e%3cpath d='M256 349v70c39 0 70-31 70-70h-70z' fill='%231e2e3b'/%3e%3c/svg%3e",
