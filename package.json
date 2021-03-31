@@ -6,7 +6,6 @@
   "scripts": {
     "lint": "./node_modules/.bin/eslint lib/*.jsx",
     "prepublish": "npm run build",
-    "prepush": "npm run lint && npm run test:coverage",
     "start": "./node_modules/.bin/webpack-dev-server --inline --content-base build/",
     "prettier-watch": "onchange '**/*.js' '**/*.jsx' -- prettier --write {{changed}}",
     "report-coverage": "nyc report --reporter=lcov > coverage.lcov && codecov",
