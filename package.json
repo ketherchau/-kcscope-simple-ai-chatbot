@@ -1,6 +1,6 @@
 {
   "name": "@kcscope/simple-ai-chatbot",
-  "version": "0.6.4",
+  "version": "0.6.5",
   "description": "React Simple Chatbot",
   "main": "dist/react-simple-chatbot.js",
   "scripts": {

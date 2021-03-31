@@ -78,7 +78,7 @@ class ChatBot extends Component {
     const chatSteps = {};
 
     if (!token) {
-      return console.error('[@kcscope/chatbot-plugin] Please provide token');
+      return console.error('[@kcscope/simple-ai-chatbot] Please provide token');
     }
 
     axios.get(`https://fyp-ai-chatbot-server-7r4gm.ondigitalocean.app/api/chatbots/verify?token=${token}`)
@@ -87,7 +87,7 @@ class ChatBot extends Component {
           if (res.data.chatbotId) {
             this.setState({ chatbotId: res.data.chatbotId });
           } else {
-            console.error('[@kcscope/chatbot-plugin] Token Incorrect!');
+            console.error('[@kcscope/simple-ai-chatbot] Token Incorrect!');
           }
         }
       })
@@ -298,10 +298,13 @@ class ChatBot extends Component {
       currentStep.trigger = this.getTriggeredStep(data.trigger, data.value);
     }
 
-    // console.log('currentStep', currentStep, currentStep.options && data)
+    // console.log('currentStep', steps, currentStep, currentStep.options)
 
     if (isEnd) {
       this.handleEnd();
+    } else if (currentStep.label && currentStep.value && currentStep.user) {
+      this._fetchResponse(currentStep.value);
+
     } else if (currentStep.options && data) {
       const option = currentStep.options.filter(o => o.value === data.value)[0];
       // const trigger = this.getTriggeredStep(option.trigger, currentStep.value);
@@ -615,10 +618,10 @@ class ChatBot extends Component {
 
             axios.post('https://fyp-ai-chatbot-server-7r4gm.ondigitalocean.app/api/analytics/contactUsage', data)
               .then(function (response) {
-                console.log(response);
+                // console.log(response);
               })
               .catch(function (error) {
-                console.log(error);
+                console.error(error);
               });
             
           }
@@ -636,114 +639,7 @@ class ChatBot extends Component {
         
       } else if (inputValue.length > 0) {
         
-        axios.get(`https://fyp-ai-chatbot-server-7r4gm.ondigitalocean.app/api/chatbots/response?chatbotId=${chatbotId}&input=${inputValue}`)
-          .then(res => {
-            if (res.status === 201) {
-              let message;
-              let options;
-              let component;
-              let steps = {};
-
-              switch (res.data.responseType) {
-                case 'multiple':
-                  options = res.data.response.map(r => ({
-                    value: r,
-                    label: r
-                  }));
-                  break;
-                case 'card':
-                  component = (
-                    <div style={{ width: '60%' }}>
-                      <img style={{ width: '100%' }} alt={res.data.response.title} src={res.data.response.imageUrl} />
-                      <h2>{res.data.response.title}</h2>
-                      <h3>{res.data.response.description}</h3>
-                    </div>
-                  );
-                  break;
-                case 'url':
-                  component = (
-                    <a target='_blank' href={res.data.response.url}>{res.data.response.text}</a>
-                  );
-                  break;
-                case 'event':
-                  res.data.response.forEach((r, i) => {
-                    steps[i] = {
-                      id: i,
-                      message: r.text,
-                      trigger: r.param,
-                      event: true,
-                      isContactForm: res.data.isContactForm,
-                      ...defaultBotSettings,
-                    }
-                  })
-                  break;
-                case 'plainText':
-                  message = res.data.response;
-                  break;
-
-                default:
-                  message = res.data.response;
-                  break;
-              }
-
-              const nextStep = {
-                ...defaultBotSettings,
-                id: '1'
-              };
-
-              message ? (nextStep.message = message) : undefined;
-              options ? (nextStep.options = options) : undefined;
-              component ? (nextStep.component = component) : undefined;
-
-              currentStep = Object.assign({}, nextStep);
-              
-              if (Object.keys(steps).length) {
-                currentStep = Object.assign({}, steps[0]);
-                this.setState({ steps })
-              }
-
-              renderedSteps.push(currentStep);
-              previousSteps.push(currentStep);
-              this.setState({
-                currentStep,
-                renderedSteps,
-                previousSteps,
-                inputValue: this.input.value = null,
-                intentName: res.data.intentName,
-                chatbotName: res.data.chatbotName,
-                userId: res.data.userId,
-              });
-            } else {
-              const step = {
-                ...defaultBotSettings,
-                message: 'Sorry, I am not understand, please contact our sales.'
-              };
-        
-              currentStep = Object.assign({}, step);
-        
-              renderedSteps.push(currentStep);
-              previousSteps.push(currentStep);
-        
-              // console.log('currentStep, renderedSteps, previousSteps, inputValue', currentStep, renderedSteps, previousSteps, inputValue)
-        
-              this.setState(
-                {
-                  currentStep,
-                  renderedSteps,
-                  previousSteps,
-                  disabled: true
-                },
-                () => {
-                  if (this.input) {
-                    this.input.blur();
-                  }
-                }
-              );
-            }
-          })
-          .catch(function (error) {
-            console.log(error);
-          });
+        this._fetchResponse();
       }
     }
   };
@@ -860,6 +756,125 @@ class ChatBot extends Component {
   };
 
   // Private function
+  _fetchResponse = (inputValue=this.state.inputValue) => {
+    let {
+      defaultBotSettings,
+      previousSteps,
+      renderedSteps,
+      chatbotId,
+      currentStep,
+    } = this.state;
+
+    axios.get(`https://fyp-ai-chatbot-server-7r4gm.ondigitalocean.app/api/chatbots/response?chatbotId=${chatbotId}&input=${inputValue}`)
+      .then(res => {
+        if (res.status === 201) {
+          let message;
+          let options;
+          let component;
+          let steps = {};
+
+          switch (res.data.responseType) {
+            case 'multiple':
+              options = res.data.response.map(r => ({
+                value: r,
+                label: r
+              }));
+              break;
+            case 'card':
+              component = (
+                <div style={{ width: '100%' }}>
+                  <img style={{ width: '100%' }} alt={res.data.response.title} src={res.data.response.imageUrl} />
+                  <h3>{res.data.response.title}</h3>
+                  <p>{res.data.response.description}</p>
+                </div>
+              );
+              break;
+            case 'url':
+              component = (
+                <a target='_blank' href={res.data.response.url}>{res.data.response.text}</a>
+              );
+              break;
+            case 'event':
+              res.data.response.forEach((r, i) => {
+                steps[i] = {
+                  id: i,
+                  message: r.text,
+                  trigger: r.param,
+                  event: true,
+                  isContactForm: res.data.isContactForm,
+                  ...defaultBotSettings,
+                }
+              })
+              break;
+            case 'plainText':
+              message = res.data.response;
+              break;
+
+            default:
+              message = res.data.response;
+              break;
+          }
+
+          const nextStep = {
+            ...defaultBotSettings,
+            id: '1'
+          };
+
+          message ? (nextStep.message = message) : undefined;
+          options ? (nextStep.options = options) : undefined;
+          component ? (nextStep.component = component) : undefined;
+
+          currentStep = Object.assign({}, nextStep);
+          
+          if (Object.keys(steps).length) {
+            currentStep = Object.assign({}, steps[0]);
+            this.setState({ steps })
+          }
+
+          renderedSteps.push(currentStep);
+          previousSteps.push(currentStep);
+          this.setState({
+            currentStep,
+            renderedSteps,
+            previousSteps,
+            inputValue: this.input.value = null,
+            intentName: res.data.intentName,
+            chatbotName: res.data.chatbotName,
+            userId: res.data.userId,
+          });
+        } else {
+          const step = {
+            ...defaultBotSettings,
+            message: 'Sorry, I am not understand, please contact our sales.'
+          };
+    
+          currentStep = Object.assign({}, step);
+    
+          renderedSteps.push(currentStep);
+          previousSteps.push(currentStep);
+    
+          // console.log('currentStep, renderedSteps, previousSteps, inputValue', currentStep, renderedSteps, previousSteps, inputValue)
+    
+          this.setState(
+            {
+              currentStep,
+              renderedSteps,
+              previousSteps,
+              disabled: true
+            },
+            () => {
+              if (this.input) {
+                this.input.blur();
+              }
+            }
+          );
+        }
+      })
+      .catch(function (error) {
+        console.error(error);
+      });
+  }
+
   _triggerCustomComponent = () => {
     const { 
       defaultBotSettings,

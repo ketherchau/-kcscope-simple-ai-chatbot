@@ -1,4 +1,4 @@
-# @kcscope/React Simple Chatbot
+# Simple AI Chatbot
 
 <a href="https://travis-ci.org/LucasBassetti/react-simple-chatbot"><img src="https://travis-ci.org/LucasBassetti/react-simple-chatbot.svg?branch=master" alt="Travis CI" /></a> <a href="https://badge.fury.io/js/react-simple-chatbot"><img src="https://badge.fury.io/js/react-simple-chatbot.svg" alt="npm version"></a>
   <img src="https://codecov.io/gh/LucasBassetti/react-simple-chatbot/branch/master/graph/badge.svg" alt="Codecov" />
@@ -19,11 +19,11 @@ npm install @kcscope/simple-ai-chatbot --save
 There are several examples on the [website](http://lucasbassetti.com.br/react-simple-chatbot). Here is the first one to get you started:
 
 ``` javascript
-import ChatBot from 'react-simple-chatbot';
+import ChatBot from '@kcscope/simple-ai-chatbot';
 
 ReactDOM.render(
   <div>
-    <ChatBot token={$TOKEN} />
+    <ChatBot token={TOKEN} />
   </div>,
   document.getElementById('root')
 );
