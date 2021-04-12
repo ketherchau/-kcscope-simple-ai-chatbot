@@ -28,3 +28,7 @@ ReactDOM.render(
   document.getElementById('root')
 );
 ```
+
+
+### Remark
+A fork of a [react-simple-chatbot](http://lucasbassetti.com.br/react-simple-chatbot), for educational purpose.
